@@ -1,3 +1,4 @@
+import UserMenu from "@/components/UserMenu";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
@@ -377,9 +378,7 @@ const breakingNews = publishedNews
               ▣ <span>E-Paper</span>
             </button>
 
-            <Link href="/login">
-              ◉ <span>Login</span>
-            </Link>
+            <UserMenu />
 
           </div>
         </div>
