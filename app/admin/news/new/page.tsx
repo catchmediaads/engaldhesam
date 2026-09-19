@@ -1,158 +1,550 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { createClient } from "../../../../lib/supabase-browser";
+
+type Category = {
+  id: string;
+  name: string;
+};
+
+type District = {
+  id: string;
+  name: string;
+};
+
+type Language = {
+  id: string;
+  code: string;
+  name: string;
+  native_name?: string | null;
+};
 
 export default function CreateNewsPage() {
   const supabase = createClient();
 
+  const [userEmail, setUserEmail] = useState("");
+
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [content, setContent] = useState("");
+
   const [articleType, setArticleType] = useState("news");
-
-  const [categories, setCategories] = useState<any[]>([]);
-  const [districts, setDistricts] = useState<any[]>([]);
-
   const [categoryId, setCategoryId] = useState("");
   const [districtId, setDistrictId] = useState("");
-
   const [languageCode, setLanguageCode] = useState("ta");
 
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
 
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [languages, setLanguages] = useState<Language[]>([]);
+
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState("");
+  const [altText, setAltText] = useState("");
+  const [caption, setCaption] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
-    loadFormData();
+    async function loadData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setUserEmail(user.email ?? "");
+
+      const { data: categoryData, error: categoryError } = await supabase
+        .from("categories")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (categoryError) {
+        console.error("Category load error:", categoryError);
+      }
+
+      const { data: districtData, error: districtError } = await supabase
+        .from("districts")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (districtError) {
+        console.error("District load error:", districtError);
+      }
+
+      const { data: languageData, error: languageError } = await supabase
+        .from("languages")
+        .select("id, code, name, native_name")
+        .eq("is_enabled", true)
+        .order("sort_order", { ascending: true });
+
+      if (languageError) {
+        console.error("Language load error:", languageError);
+      }
+
+      setCategories(categoryData ?? []);
+      setDistricts(districtData ?? []);
+      setLanguages(languageData ?? []);
+
+      if (languageData && languageData.length > 0) {
+        const tamil = languageData.find((language) => language.code === "ta");
+        setLanguageCode(tamil?.code ?? languageData[0].code);
+      }
+
+      setIsLoading(false);
+    }
+
+    loadData();
   }, []);
 
-  async function loadFormData() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  function handleCoverChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
 
-    if (!user) {
-      window.location.href = "/login";
+    if (!file) {
       return;
     }
 
-    const { data: categoryData } = await supabase
-      .from("categories")
-      .select("id, name")
-      .order("name");
+    if (!file.type.startsWith("image/")) {
+      setMessage("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
 
-    const { data: districtData } = await supabase
-      .from("districts")
-      .select("id, name")
-      .order("name");
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage("Cover image must be less than 10 MB.");
+      event.target.value = "";
+      return;
+    }
 
-    setCategories(categoryData ?? []);
-    setDistricts(districtData ?? []);
+    setMessage("");
+    setCoverFile(file);
+
+    const previewUrl = URL.createObjectURL(file);
+    setCoverPreview(previewUrl);
+  }
+
+  function removeCoverImage() {
+    if (coverPreview) {
+      URL.revokeObjectURL(coverPreview);
+    }
+
+    setCoverFile(null);
+    setCoverPreview("");
+    setAltText("");
+    setCaption("");
+  }
+
+  async function getImageDimensions(
+    file: File
+  ): Promise<{ width: number | null; height: number | null }> {
+    return new Promise((resolve) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        const width = image.naturalWidth || null;
+        const height = image.naturalHeight || null;
+
+        URL.revokeObjectURL(objectUrl);
+
+        resolve({
+          width,
+          height,
+        });
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+
+        resolve({
+          width: null,
+          height: null,
+        });
+      };
+
+      image.src = objectUrl;
+    });
+  }
+
+  function createSafeFileName(fileName: string) {
+    const extension = fileName.includes(".")
+      ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase()
+      : "";
+
+    const baseName = fileName
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9-_]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase();
+
+    return `${baseName || "cover-image"}-${Date.now()}${extension}`;
+  }
+
+  async function uploadCoverImage(userId: string) {
+    if (!coverFile) {
+      return null;
+    }
+
+    const fileName = createSafeFileName(coverFile.name);
+
+    const filePath = `articles/${userId}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("news-media")
+      .upload(filePath, coverFile, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: coverFile.type,
+      });
+
+    if (uploadError) {
+      throw new Error(
+        `Cover image upload failed: ${uploadError.message}`
+      );
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("news-media")
+      .getPublicUrl(filePath);
+
+    const fileUrl = publicUrlData.publicUrl;
+
+    const dimensions = await getImageDimensions(coverFile);
+
+    const { data: mediaData, error: mediaError } = await supabase
+      .from("media")
+      .insert({
+        uploaded_by: userId,
+        file_name: coverFile.name,
+        file_path: filePath,
+        file_url: fileUrl,
+        media_type: "image",
+        mime_type: coverFile.type,
+        file_size: coverFile.size,
+        width: dimensions.width,
+        height: dimensions.height,
+        alt_text: altText.trim() || null,
+        caption: caption.trim() || null,
+        is_active: true,
+      })
+      .select("id")
+      .single();
+
+    if (mediaError) {
+      await supabase.storage
+        .from("news-media")
+        .remove([filePath]);
+
+      throw new Error(
+        `Media record creation failed: ${mediaError.message}`
+      );
+    }
+
+    return {
+      mediaId: mediaData.id,
+      filePath,
+    };
   }
 
   async function saveNews(status: "draft" | "submitted") {
-    setSaving(true);
     setMessage("");
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      window.location.href = "/login";
-      return;
-    }
 
     if (!title.trim()) {
       setMessage("Please enter the news title.");
-      setSaving(false);
       return;
     }
 
     if (!content.trim()) {
       setMessage("Please enter the news content.");
-      setSaving(false);
       return;
     }
 
-    const { data: article, error: articleError } =
-      await supabase
+    setSaving(true);
+
+    let uploadedMedia: { mediaId: string; filePath: string } | null =
+      null;
+
+    let createdArticleId = "";
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      /*
+       * STEP 1
+       * Upload cover image and create media record.
+       */
+      if (coverFile) {
+        uploadedMedia = await uploadCoverImage(user.id);
+      }
+
+      /*
+       * STEP 2
+       * Create article.
+       */
+      const { data: articleData, error: articleError } = await supabase
         .from("articles")
         .insert({
-          title: title.trim(),
-          subtitle: subtitle.trim() || null,
-          content: content.trim(),
           article_type: articleType,
-          status,
+          status: "draft",
           category_id: categoryId || null,
           district_id: districtId || null,
           reporter_id: user.id,
         })
-        .select()
+        .select("id")
         .single();
 
-    if (articleError) {
-      console.error(articleError);
-      setMessage(articleError.message);
-      setSaving(false);
-      return;
-    }
+      if (articleError) {
+        console.error("Article error:", articleError);
 
-    const { error: translationError } =
-      await supabase
+        if (uploadedMedia) {
+          await supabase.storage
+            .from("news-media")
+            .remove([uploadedMedia.filePath]);
+
+          await supabase
+            .from("media")
+            .delete()
+            .eq("id", uploadedMedia.mediaId);
+        }
+
+        throw new Error(
+          `News creation failed: ${articleError.message}`
+        );
+      }
+
+      createdArticleId = articleData.id;
+
+      /*
+       * STEP 3
+       * Create Tamil / selected language translation.
+       */
+      const selectedLanguage = languages.find(
+        (language) => language.code === languageCode
+      );
+
+      if (!selectedLanguage) {
+        await supabase
+          .from("articles")
+          .delete()
+          .eq("id", articleData.id);
+
+        if (uploadedMedia) {
+          await supabase.storage
+            .from("news-media")
+            .remove([uploadedMedia.filePath]);
+
+          await supabase
+            .from("media")
+            .delete()
+            .eq("id", uploadedMedia.mediaId);
+        }
+
+        throw new Error(
+          "Selected language could not be found. Please refresh the page and try again."
+        );
+      }
+
+      const { error: translationError } = await supabase
         .from("article_translations")
         .insert({
-          article_id: article.id,
-          language_code: languageCode,
+          article_id: articleData.id,
+          language_id: selectedLanguage.id,
           title: title.trim(),
           subtitle: subtitle.trim() || null,
           content: content.trim(),
           seo_title: seoTitle.trim() || null,
-          seo_description:
-            seoDescription.trim() || null,
+          seo_description: seoDescription.trim() || null,
+          status: "draft",
+          created_by: user.id,
+          updated_by: user.id,
         });
 
-    if (translationError) {
-      console.error(translationError);
-      setMessage(
-        "News created, but translation data could not be saved."
-      );
-      setSaving(false);
-      return;
-    }
+      if (translationError) {
+        console.error("Translation error:", translationError);
 
-    setMessage(
-      status === "draft"
-        ? "News saved as Draft successfully."
-        : "News submitted for Editor Review successfully."
+        await supabase
+          .from("articles")
+          .delete()
+          .eq("id", articleData.id);
+
+        if (uploadedMedia) {
+          await supabase.storage
+            .from("news-media")
+            .remove([uploadedMedia.filePath]);
+
+          await supabase
+            .from("media")
+            .delete()
+            .eq("id", uploadedMedia.mediaId);
+        }
+
+        throw new Error(
+          `Translation creation failed: ${translationError.message}`
+        );
+      }
+
+      /*
+       * STEP 4
+       * Connect cover image to article.
+       */
+      if (uploadedMedia) {
+        const { error: articleMediaError } = await supabase
+          .from("article_media")
+          .insert({
+            article_id: articleData.id,
+            media_id: uploadedMedia.mediaId,
+            media_role: "featured",
+            sort_order: 0,
+          });
+
+        if (articleMediaError) {
+          console.error(
+            "Article media error:",
+            articleMediaError
+          );
+
+          await supabase
+            .from("articles")
+            .delete()
+            .eq("id", articleData.id);
+
+          await supabase.storage
+            .from("news-media")
+            .remove([uploadedMedia.filePath]);
+
+          await supabase
+            .from("media")
+            .delete()
+            .eq("id", uploadedMedia.mediaId);
+
+          throw new Error(
+            `Cover image linking failed: ${articleMediaError.message}`
+          );
+        }
+      }
+
+      /*
+       * SUCCESS
+       */
+      if (status === "draft") {
+        setMessage(
+          "News draft saved successfully."
+        );
+      } else {
+        setMessage(
+          "News submitted successfully for Editor review."
+        );
+      }
+      /*
+ * STEP 5
+ * If the user selected "Submit for Review",
+ * move the article from draft to submitted.
+ */
+if (status === "submitted") {
+  const { error: submitError } = await supabase
+    .from("articles")
+    .update({
+      status: "submitted",
+    })
+    .eq("id", articleData.id);
+
+  if (submitError) {
+    console.error("Article submission error:", submitError);
+
+    throw new Error(
+      `News submission failed: ${submitError.message}`
     );
-
-    setTitle("");
-    setSubtitle("");
-    setContent("");
-    setSeoTitle("");
-    setSeoDescription("");
-    setCategoryId("");
-    setDistrictId("");
-
-    setSaving(false);
   }
 
-  async function handleSubmit(event: FormEvent) {
+  const { error: translationSubmitError } = await supabase
+    .from("article_translations")
+    .update({
+      status: "submitted",
+      updated_by: user.id,
+    })
+    .eq("article_id", articleData.id);
+
+  if (translationSubmitError) {
+    console.error(
+      "Translation submission error:",
+      translationSubmitError
+    );
+
+    throw new Error(
+      `Translation submission failed: ${translationSubmitError.message}`
+    );
+  }
+}
+
+      setTitle("");
+      setSubtitle("");
+      setContent("");
+      setArticleType("news");
+      setCategoryId("");
+      setDistrictId("");
+      setLanguageCode("ta");
+      setSeoTitle("");
+      setSeoDescription("");
+      removeCoverImage();
+
+      console.log("Created article:", createdArticleId);
+    } catch (error) {
+      console.error("Save news error:", error);
+
+      if (error instanceof Error) {
+        setMessage(error.message);
+      } else {
+        setMessage(
+          "News save செய்ய முடியவில்லை. Please try again."
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await saveNews("submitted");
+    saveNews("submitted");
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
+  if (isLoading) {
+    return (
+      <main className="admin-loading">
+        <div>
+          <strong>எங்கள் தேசம்</strong>
+          <p>Loading News Editor...</p>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="admin-layout">
-
-      {/* SIDEBAR */}
-
       <aside className="admin-sidebar">
-
         <div className="admin-brand">
           <div className="admin-brand-tamil">
             எங்கள் தேசம்
@@ -164,7 +556,6 @@ export default function CreateNewsPage() {
         </div>
 
         <nav className="admin-nav">
-
           <a href="/admin">
             <span>▣</span>
             Dashboard
@@ -229,11 +620,9 @@ export default function CreateNewsPage() {
             <span>⚙</span>
             Settings
           </a>
-
         </nav>
 
         <div className="admin-sidebar-bottom">
-
           <a
             href="/"
             target="_blank"
@@ -242,111 +631,109 @@ export default function CreateNewsPage() {
             ↗ View Website
           </a>
 
-          <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.href = "/login";
-            }}
-          >
+          <button onClick={handleLogout}>
             ⇥ Logout
           </button>
-
         </div>
-
       </aside>
 
-      {/* MAIN */}
-
       <section className="admin-main">
-
         <header className="admin-topbar">
-
           <div>
             <h1>Create News</h1>
 
             <p>
-              Create and submit a new article
+              எங்கள் தேசம் Newsroom Administration
             </p>
           </div>
 
-          <a
-            href="/admin/news"
-            className="admin-small-button"
-          >
-            ← Back to News
-          </a>
+          <div className="admin-user">
+            <div className="admin-avatar">
+              SA
+            </div>
 
+            <div>
+              <strong>Super Admin</strong>
+              <span>{userEmail}</span>
+            </div>
+          </div>
         </header>
 
         <div className="admin-content">
+          <div
+            style={{
+              marginBottom: "20px",
+            }}
+          >
+            <a
+              href="/admin/news"
+              style={{
+                color: "var(--accent)",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              ← Back to News
+            </a>
+          </div>
 
           <form onSubmit={handleSubmit}>
-
-            {/* BASIC INFORMATION */}
-
             <section className="admin-section">
-
               <div className="admin-section-title">
                 <div>
                   <h2>News Information</h2>
-
                   <p>
-                    Enter the basic information for this
-                    article.
+                    Basic information about this news article
                   </p>
                 </div>
               </div>
 
-              <div className="news-form-grid">
-
-                <div className="news-form-full">
-
-                  <label>
+              <div className="admin-form-grid">
+                <div className="admin-form-group admin-form-full">
+                  <label htmlFor="title">
                     News Title *
                   </label>
 
                   <input
+                    id="title"
                     type="text"
+                    placeholder="Enter the news headline"
                     value={title}
-                    onChange={(e) =>
-                      setTitle(e.target.value)
+                    onChange={(event) =>
+                      setTitle(event.target.value)
                     }
-                    placeholder="செய்தியின் தலைப்பை உள்ளிடவும்"
                     required
                   />
-
                 </div>
 
-                <div className="news-form-full">
-
-                  <label>
+                <div className="admin-form-group admin-form-full">
+                  <label htmlFor="subtitle">
                     Subtitle
                   </label>
 
                   <input
+                    id="subtitle"
                     type="text"
+                    placeholder="Enter a short subtitle"
                     value={subtitle}
-                    onChange={(e) =>
-                      setSubtitle(e.target.value)
+                    onChange={(event) =>
+                      setSubtitle(event.target.value)
                     }
-                    placeholder="செய்தியின் துணைத்தலைப்பு"
                   />
-
                 </div>
 
-                <div>
-
-                  <label>
+                <div className="admin-form-group">
+                  <label htmlFor="articleType">
                     Article Type
                   </label>
 
                   <select
+                    id="articleType"
                     value={articleType}
-                    onChange={(e) =>
-                      setArticleType(e.target.value)
+                    onChange={(event) =>
+                      setArticleType(event.target.value)
                     }
                   >
-
                     <option value="news">
                       News
                     </option>
@@ -374,53 +761,44 @@ export default function CreateNewsPage() {
                     <option value="press_release">
                       Press Release
                     </option>
-
                   </select>
-
                 </div>
 
-                <div>
-
-                  <label>
+                <div className="admin-form-group">
+                  <label htmlFor="languageCode">
                     Language
                   </label>
 
                   <select
+                    id="languageCode"
                     value={languageCode}
-                    onChange={(e) =>
-                      setLanguageCode(e.target.value)
+                    onChange={(event) =>
+                      setLanguageCode(event.target.value)
                     }
                   >
-
-                    <option value="ta">
-                      தமிழ்
-                    </option>
-
-                    <option value="en">
-                      English
-                    </option>
-
-                    <option value="hi">
-                      हिन्दी
-                    </option>
-
+                    {languages.map((language) => (
+                      <option
+                        key={language.id}
+                        value={language.code}
+                      >
+                        {language.native_name || language.name}
+                      </option>
+                    ))}
                   </select>
-
                 </div>
 
-                <div>
-
-                  <label>
+                <div className="admin-form-group">
+                  <label htmlFor="category">
                     Category
                   </label>
 
                   <select
+                    id="category"
                     value={categoryId}
-                    onChange={(e) =>
-                      setCategoryId(e.target.value)
+                    onChange={(event) =>
+                      setCategoryId(event.target.value)
                     }
                   >
-
                     <option value="">
                       Select Category
                     </option>
@@ -433,24 +811,21 @@ export default function CreateNewsPage() {
                         {category.name}
                       </option>
                     ))}
-
                   </select>
-
                 </div>
 
-                <div>
-
-                  <label>
+                <div className="admin-form-group">
+                  <label htmlFor="district">
                     District
                   </label>
 
                   <select
+                    id="district"
                     value={districtId}
-                    onChange={(e) =>
-                      setDistrictId(e.target.value)
+                    onChange={(event) =>
+                      setDistrictId(event.target.value)
                     }
                   >
-
                     <option value="">
                       Select District
                     </option>
@@ -463,144 +838,297 @@ export default function CreateNewsPage() {
                         {district.name}
                       </option>
                     ))}
-
                   </select>
-
                 </div>
-
               </div>
-
             </section>
 
-            {/* CONTENT */}
-
             <section className="admin-section">
-
               <div className="admin-section-title">
-
                 <div>
-                  <h2>News Content</h2>
-
+                  <h2>Cover Image</h2>
                   <p>
-                    Write the complete news article.
+                    Upload the main image for this news article
                   </p>
                 </div>
-
               </div>
 
-              <div className="news-form-full">
+              {!coverFile ? (
+                <div
+                  style={{
+                    border: "2px dashed var(--line)",
+                    borderRadius: "12px",
+                    padding: "35px 20px",
+                    textAlign: "center",
+                    background: "var(--soft)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "38px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    📸
+                  </div>
 
-                <label>
-                  Content *
+                  <strong
+                    style={{
+                      display: "block",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Upload Cover Image
+                  </strong>
+
+                  <p
+                    style={{
+                      margin: "0 0 16px",
+                      color: "#6b7280",
+                    }}
+                  >
+                    JPG, PNG or WebP • Maximum 10 MB
+                  </p>
+
+                  <label
+                    htmlFor="coverImage"
+                    className="admin-primary-button"
+                    style={{
+                      display: "inline-block",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Choose Image
+                  </label>
+
+                  <input
+                    id="coverImage"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleCoverChange}
+                    style={{ display: "none" }}
+                  />
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    background: "var(--paper)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(240px, 360px) 1fr",
+                      gap: "20px",
+                      alignItems: "start",
+                    }}
+                  >
+                    <div>
+                      {coverPreview && (
+                        <img
+                          src={coverPreview}
+                          alt="Cover preview"
+                          style={{
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            objectFit: "cover",
+                            borderRadius: "10px",
+                            display: "block",
+                          }}
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={removeCoverImage}
+                        style={{
+                          marginTop: "10px",
+                          width: "100%",
+                          padding: "10px",
+                          borderRadius: "8px",
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Remove Image
+                      </button>
+                    </div>
+
+                    <div className="admin-form-grid">
+                      <div className="admin-form-group admin-form-full">
+                        <label>
+                          Selected File
+                        </label>
+
+                        <div
+                          style={{
+                            padding: "11px 13px",
+                            border: "1px solid var(--line)",
+                            borderRadius: "8px",
+                            background: "var(--soft)",
+                          }}
+                        >
+                          <strong>
+                            {coverFile.name}
+                          </strong>
+
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              color: "#6b7280",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {(
+                              coverFile.size /
+                              (1024 * 1024)
+                            ).toFixed(2)}{" "}
+                            MB
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="admin-form-group admin-form-full">
+                        <label htmlFor="altText">
+                          Alt Text
+                        </label>
+
+                        <input
+                          id="altText"
+                          type="text"
+                          placeholder="Describe the image for accessibility and SEO"
+                          value={altText}
+                          onChange={(event) =>
+                            setAltText(event.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="admin-form-group admin-form-full">
+                        <label htmlFor="caption">
+                          Image Caption
+                        </label>
+
+                        <input
+                          id="caption"
+                          type="text"
+                          placeholder="Optional photo caption"
+                          value={caption}
+                          onChange={(event) =>
+                            setCaption(event.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="admin-section">
+              <div className="admin-section-title">
+                <div>
+                  <h2>Content</h2>
+                  <p>
+                    Write the complete news article
+                  </p>
+                </div>
+              </div>
+
+              <div className="admin-form-group admin-form-full">
+                <label htmlFor="content">
+                  News Content *
                 </label>
 
                 <textarea
+                  id="content"
+                  rows={18}
+                  placeholder="Write the complete news article here..."
                   value={content}
-                  onChange={(e) =>
-                    setContent(e.target.value)
+                  onChange={(event) =>
+                    setContent(event.target.value)
                   }
-                  placeholder="இங்கே முழுமையான செய்தியை எழுதவும்..."
-                  rows={16}
                   required
                 />
-
               </div>
-
             </section>
 
-            {/* SEO */}
-
             <section className="admin-section">
-
               <div className="admin-section-title">
-
                 <div>
-                  <h2>SEO Information</h2>
-
+                  <h2>SEO</h2>
                   <p>
-                    Search engine optimization details.
+                    Search engine optimization information
                   </p>
                 </div>
-
               </div>
 
-              <div className="news-form-grid">
-
-                <div className="news-form-full">
-
-                  <label>
+              <div className="admin-form-grid">
+                <div className="admin-form-group admin-form-full">
+                  <label htmlFor="seoTitle">
                     SEO Title
                   </label>
 
                   <input
+                    id="seoTitle"
                     type="text"
+                    placeholder="SEO title for Google and social sharing"
                     value={seoTitle}
-                    onChange={(e) =>
-                      setSeoTitle(e.target.value)
+                    onChange={(event) =>
+                      setSeoTitle(event.target.value)
                     }
-                    placeholder="SEO optimized title"
                   />
-
                 </div>
 
-                <div className="news-form-full">
-
-                  <label>
+                <div className="admin-form-group admin-form-full">
+                  <label htmlFor="seoDescription">
                     SEO Description
                   </label>
 
                   <textarea
-                    value={seoDescription}
-                    onChange={(e) =>
-                      setSeoDescription(e.target.value)
-                    }
-                    placeholder="Short description for search engines"
+                    id="seoDescription"
                     rows={4}
+                    placeholder="Short description for search engines"
+                    value={seoDescription}
+                    onChange={(event) =>
+                      setSeoDescription(event.target.value)
+                    }
                   />
-
                 </div>
-
               </div>
-
             </section>
 
-            {/* MESSAGE */}
-
             {message && (
-
               <div
                 style={{
-                  padding: "14px 16px",
-                  background: "#eef3f2",
-                  border: "1px solid #d9d7d0",
-                  borderRadius: "8px",
                   marginBottom: "20px",
+                  padding: "14px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--line)",
+                  background: "var(--soft)",
+                  color: "#18212b",
+                  fontWeight: 600,
                 }}
               >
                 {message}
               </div>
-
             )}
 
-            {/* ACTIONS */}
-
-            <section
-              className="admin-section"
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "15px",
-                flexWrap: "wrap",
-              }}
-            >
-
-              <a
-                href="/admin/news"
-                className="admin-small-button"
-              >
-                Cancel
-              </a>
+            <section className="admin-section">
+              <div className="admin-section-title">
+                <div>
+                  <h2>Actions</h2>
+                  <p>
+                    Save the article or submit it for review
+                  </p>
+                </div>
+              </div>
 
               <div
                 style={{
@@ -609,14 +1137,11 @@ export default function CreateNewsPage() {
                   flexWrap: "wrap",
                 }}
               >
-
                 <button
                   type="button"
-                  className="admin-small-button"
+                  onClick={() => saveNews("draft")}
                   disabled={saving}
-                  onClick={() =>
-                    saveNews("draft")
-                  }
+                  className="admin-secondary-button"
                 >
                   {saving
                     ? "Saving..."
@@ -625,24 +1150,28 @@ export default function CreateNewsPage() {
 
                 <button
                   type="submit"
-                  className="admin-primary-button"
                   disabled={saving}
+                  className="admin-primary-button"
                 >
                   {saving
                     ? "Submitting..."
-                    : "Submit for Review →"}
+                    : "Submit for Review"}
                 </button>
 
+                <a
+                  href="/admin/news"
+                  className="admin-secondary-button"
+                  style={{
+                    textDecoration: "none",
+                  }}
+                >
+                  Cancel
+                </a>
               </div>
-
             </section>
-
           </form>
-
         </div>
-
       </section>
-
     </main>
   );
 }
