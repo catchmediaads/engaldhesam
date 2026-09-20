@@ -1,3 +1,4 @@
+import SiteHeader from "@/components/SiteHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";

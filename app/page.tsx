@@ -359,14 +359,20 @@ const breakingNews = publishedNews
         <div className="header-inner">
 
           <div className="brand">
-            <div className="brand-tamil">
-              எங்கள் தேசம்
-            </div>
-
-            <div className="brand-english">
-              ENGAL DHESAM • TAMIL DIGITAL NEWSPAPER
-            </div>
-          </div>
+ 
+  <img
+    src="/images/branding/engal-dhesam-logo-transparent.png"
+    alt="எங்கள் தேசம் | ஓர் இனத்தின் பெருங்கனவு"
+    className="site-logo"
+    style={{
+      width: "200px",
+      height: "auto",
+      objectFit: "contain",
+      objectPosition: "left center",
+      display: "block",
+    }}
+  />
+</div>
 
           <div className="header-actions">
 
@@ -422,6 +428,8 @@ const breakingNews = publishedNews
         </div>
       </nav>
 
+      
+
       {/* ======================================
           BREAKING NEWS
       ====================================== */}
@@ -442,6 +450,18 @@ const breakingNews = publishedNews
 
         </div>
 
+      </section>
+
+       {/* ======================================
+          BREAKING NEWS BOTTOM AD
+      ====================================== */}
+
+      <section className="breaking-ad-section">
+        <div className="top-ad-banner">
+          <span>ADVERTISEMENT</span>
+          <strong>970 × 90</strong>
+          <small>உங்கள் விளம்பரம் இங்கே</small>
+        </div>
       </section>
 
       {/* ======================================

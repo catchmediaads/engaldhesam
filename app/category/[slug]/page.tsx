@@ -1,3 +1,4 @@
+import SiteHeader from "@/components/SiteHeader";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -133,61 +134,17 @@ export default async function CategoryPage({ params }: PageProps) {
 
   return (
     <main className="site">
-      {/* HEADER */}
-      <header className="header">
-        <div className="header-inner">
-          <div className="brand">
-            <Link href="/" className="news-card-link">
-              <div className="brand-tamil">எங்கள் தேசம்</div>
-              <div className="brand-english">
-                ENGAL DHESAM • TAMIL DIGITAL NEWSPAPER
-              </div>
-            </Link>
-          </div>
 
-          <div className="header-actions">
-            <Link href="/">
-              ⌂ <span>முகப்பு</span>
-            </Link>
+      {/* ======================================
+          SHARED HOME HEADER
+          ====================================== */}
 
-            <Link href="/login">
-              ◉ <span>Login</span>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
-      {/* NAVIGATION */}
-      <nav className="navigation">
-        <div className="nav-inner">
-          <Link href="/">முகப்பு</Link>
-          <Link href="/category/tamil-nadu">தமிழ்நாடு</Link>
-          <Link href="/districts">மாவட்டங்கள்</Link>
-          <Link href="/category/india">இந்தியா</Link>
-          <Link href="/category/world">உலகம்</Link>
-          <Link href="/category/politics">அரசியல்</Link>
-          <Link href="/category/business">வணிகம்</Link>
-          <Link href="/category/sports">விளையாட்டு</Link>
-          <Link href="/category/cinema">சினிமா</Link>
-          <Link href="/category/technology">
-            தொழில்நுட்பம்
-          </Link>
-          <Link href="/category/agriculture">
-            விவசாயம்
-          </Link>
-          <Link href="/category/education">
-            கல்வி
-          </Link>
-          <Link href="/category/lifestyle">
-            வாழ்க்கை
-          </Link>
-          <Link href="/category/special">
-            சிறப்பு
-          </Link>
-        </div>
-      </nav>
+      {/* ======================================
+          CATEGORY CONTENT
+          ====================================== */}
 
-      {/* MAIN */}
       <div className="container">
         <div className="article-breadcrumb">
           <Link href="/">முகப்பு</Link>
@@ -278,7 +235,10 @@ export default async function CategoryPage({ params }: PageProps) {
         )}
       </div>
 
-      {/* FOOTER */}
+      {/* ======================================
+          FOOTER
+          ====================================== */}
+
       <footer className="footer">
         <div className="footer-inner">
           <div>
@@ -305,6 +265,7 @@ export default async function CategoryPage({ params }: PageProps) {
           © 2026 Engal Dhesam. All Rights Reserved.
         </div>
       </footer>
+
     </main>
   );
 }

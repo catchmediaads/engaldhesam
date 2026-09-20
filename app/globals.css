@@ -54,8 +54,8 @@ a {
 .header-inner {
   max-width: 1280px;
   margin: auto;
-  min-height: 105px;
-  padding: 22px 24px;
+  min-height: 110px;
+  padding: 8px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -448,6 +448,88 @@ a {
 
 .ad-box strong {
   font-size: 18px;
+}
+
+/* =========================================
+   BREAKING NEWS BOTTOM AD
+========================================= */
+
+.breaking-ad-section {
+  width: 100%;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--paper);
+}
+
+.breaking-ad-banner {
+  width: min(970px, 100%);
+  min-height: 90px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+
+  text-align: center;
+
+  background: #ffffff;
+  border: 2px solid var(--accent2);
+  border-radius: 6px;
+
+  box-shadow: 0 4px 16px rgba(24, 33, 43, 0.12);
+
+  position: relative;
+  overflow: hidden;
+}
+
+.breaking-ad-banner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent2);
+}
+
+.breaking-ad-banner span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  color: #777;
+}
+
+.breaking-ad-banner strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+.breaking-ad-banner small {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+@media (max-width: 600px) {
+  .breaking-ad-section {
+    padding: 10px;
+  }
+
+  .breaking-ad-banner {
+    min-height: 80px;
+  }
+
+  .breaking-ad-banner strong {
+    font-size: 14px;
+  }
+
+  .breaking-ad-banner small {
+    font-size: 10px;
+  }
 }
 
 /* =========================
@@ -3002,5 +3084,23 @@ a {
     right: -5px;
     width: 245px;
   }
+}
+
+/* =========================================
+   COMPACT MAIN HEADER
+   ========================================= */
+
+.header {
+  height: 125px !important;
+  min-height: 125px !important;
+}
+
+.header-inner {
+  height: 125px !important;
+  min-height: 0 !important;
+  padding: 8px 24px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
